@@ -1,0 +1,158 @@
+name: AegisOps CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Backend lint + unit tests ─────────────────────────────────────────
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy
+
+      - name: Lint with Ruff
+        run: ruff check backend/ --select E,F,W,I
+
+      - name: Run unit tests
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY_TEST }}
+          DATABASE_URL: postgresql://aegisops:aegisops@localhost:5432/aegisops_test
+          QDRANT_URL: http://localhost:6333
+          APP_ENV: test
+        run: |
+          cd d:/AegisOps  # CI uses workspace root
+          python -m pytest tests/unit/ -v --tb=short --junitxml=test-results/unit.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: test-results/
+
+  # ── Guardrails safety tests ───────────────────────────────────────────
+  safety-tests:
+    name: Safety Evaluation
+    runs-on: ubuntu-latest
+    needs: backend-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run safety evaluation
+        env:
+          APP_ENV: test
+          GOOGLE_API_KEY: placeholder
+          DATABASE_URL: postgresql://dummy/dummy
+          QDRANT_URL: http://localhost:6333
+        run: |
+          cd backend
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from evaluation.safety_eval import run_all_safety_tests
+          report = run_all_safety_tests()
+          print(f'Safety tests: {report[\"passed\"]}/{report[\"total\"]} passed')
+          for r in report['results']:
+              status = '✓' if r['passed'] else '✗'
+              print(f'  {status} {r[\"test\"]}')
+          if report['pass_rate'] < 0.9:
+              print('FAIL: Safety pass rate below 90%')
+              sys.exit(1)
+          "
+
+  # ── Frontend build + lint ─────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/react-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/react-app
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend/react-app
+        run: npm run tsc -- --noEmit || true
+
+      - name: Build
+        working-directory: frontend/react-app
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/react-app/dist/
+
+  # ── Docker image builds ───────────────────────────────────────────────
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.api
+          push: false
+          tags: aegisops-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.frontend
+          push: false
+          tags: aegisops-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

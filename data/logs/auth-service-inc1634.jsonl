@@ -1,0 +1,10 @@
+{"timestamp": "2024-09-30T11:42:01Z", "level": "INFO", "service": "auth-service", "message": "POST /auth/validate 200 OK", "latency_ms": 45}
+{"timestamp": "2024-09-30T11:42:15Z", "level": "WARNING", "service": "auth-service", "message": "High CPU detected", "cpu_percent": 78}
+{"timestamp": "2024-09-30T11:42:31Z", "level": "WARNING", "service": "auth-service", "message": "Request latency elevated", "latency_ms": 890, "threshold_ms": 500}
+{"timestamp": "2024-09-30T11:42:45Z", "level": "ERROR", "service": "auth-service", "message": "POST /auth/validate 503 Service Unavailable", "latency_ms": 5001}
+{"timestamp": "2024-09-30T11:42:46Z", "level": "CRITICAL", "service": "auth-service", "message": "CPU saturation", "cpu_percent": 100, "request_queue_depth": 234}
+{"timestamp": "2024-09-30T11:42:47Z", "level": "ERROR", "service": "order-service", "message": "Auth validation timeout", "error": "upstream auth-service returned 503", "trace_id": "x1y2z3a4"}
+{"timestamp": "2024-09-30T11:42:47Z", "level": "ERROR", "service": "order-service", "message": "POST /orders 503 Service Unavailable", "trace_id": "x1y2z3a4"}
+{"timestamp": "2024-09-30T11:58:22Z", "level": "INFO", "service": "auth-service", "message": "Scaled to 4 replicas"}
+{"timestamp": "2024-09-30T11:59:01Z", "level": "INFO", "service": "auth-service", "message": "CPU normalizing", "cpu_percent": 45}
+{"timestamp": "2024-09-30T12:05:31Z", "level": "INFO", "service": "auth-service", "message": "POST /auth/validate 200 OK", "latency_ms": 38}
